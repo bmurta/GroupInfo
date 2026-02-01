@@ -1,0 +1,8 @@
+## Interface: 120000
+## Title: GroupInfo
+## Notes: Displays group composition and raid group information
+## Author: YourName
+## Version: 1.0.0
+## SavedVariables: GroupInfoDB
+
+GroupInfo.lua
