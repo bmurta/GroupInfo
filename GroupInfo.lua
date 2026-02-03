@@ -1,50 +1,64 @@
 -- GroupInfo: Lightweight addon to display group composition and raid group
 local addonName, addon = ...
 
--- Saved variables (account-wide)
-GroupInfoDB = GroupInfoDB or {}
+-- Auto-lock timer variables
+local autoLockTimer = nil
+local AUTO_LOCK_DELAY = 30  -- seconds
 
--- Initialize with defaults if not present
-local defaults = {
-    showComposition = true,
-    showRaidGroup = true,
-    testMode = false,
-    position = nil,
-    width = 250,
-    height = 40,
-    textColor = { r = 1, g = 1, b = 1 }  -- White by default
-}
+-- Forward declare frame variable
+local frame
 
-for key, value in pairs(defaults) do
-    if GroupInfoDB[key] == nil then
-        GroupInfoDB[key] = value
+local function CancelAutoLock()
+    if autoLockTimer then
+        autoLockTimer:Cancel()
+        autoLockTimer = nil
     end
 end
 
--- Ensure textColor has all required fields (for existing users upgrading)
-if not GroupInfoDB.textColor or type(GroupInfoDB.textColor) ~= "table" then
-    GroupInfoDB.textColor = { r = 1, g = 1, b = 1 }
+local function UpdateResizeGripVisibility()
+    -- This will be properly defined after resizeGrip is created
 end
-if not GroupInfoDB.textColor.r then GroupInfoDB.textColor.r = 1 end
-if not GroupInfoDB.textColor.g then GroupInfoDB.textColor.g = 1 end
-if not GroupInfoDB.textColor.b then GroupInfoDB.textColor.b = 1 end
+
+local function StartAutoLock()
+    CancelAutoLock()
+    
+    -- Only start timer if frame is unlocked
+    if frame and frame:IsMouseEnabled() then
+        autoLockTimer = C_Timer.NewTimer(AUTO_LOCK_DELAY, function()
+            frame:EnableMouse(false)
+            addon.Settings.isLocked = true
+            UpdateResizeGripVisibility()
+            print("|cFF00FF00GroupInfo:|r Frame auto-locked after inactivity")
+            autoLockTimer = nil
+        end)
+    end
+end
+
+local function ResetAutoLock()
+    -- Reset the timer whenever there's activity
+    if frame and frame:IsMouseEnabled() then
+        StartAutoLock()
+    end
+end
 
 -- Create main frame
-local frame = CreateFrame("Frame", "GroupInfoFrame", UIParent)
-frame:SetSize(GroupInfoDB.width, GroupInfoDB.height)
+frame = CreateFrame("Frame", "GroupInfoFrame", UIParent)
+frame:SetSize(addon.Settings.width, addon.Settings.height)
 frame:SetMovable(true)
 frame:SetResizable(true)
 frame:SetUserPlaced(true)
 frame:SetClampedToScreen(true)
-frame:EnableMouse(true)
+-- Always start locked unless explicitly set to unlocked
+local shouldBeUnlocked = (addon.Settings.isLocked == false)
+frame:EnableMouse(shouldBeUnlocked)
 frame:RegisterForDrag("LeftButton")
 frame:SetResizeBounds(150, 30, 600, 200)
 
 -- Set saved position or default
-if GroupInfoDB.position then
+if addon.Settings.position then
     frame:ClearAllPoints()
-    frame:SetPoint(GroupInfoDB.position.point, UIParent, GroupInfoDB.position.relativePoint, 
-                   GroupInfoDB.position.x, GroupInfoDB.position.y)
+    frame:SetPoint(addon.Settings.position.point, UIParent, addon.Settings.position.relativePoint, 
+                   addon.Settings.position.x, addon.Settings.position.y)
 else
     frame:SetPoint("TOP", UIParent, "TOP", 0, -100)
 end
@@ -52,13 +66,14 @@ end
 -- Drag functionality
 frame:SetScript("OnDragStart", function(self)
     self:StartMoving()
+    ResetAutoLock()  -- Reset timer when dragging starts
 end)
 
 frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     -- Save position
     local point, _, relativePoint, x, y = self:GetPoint()
-    GroupInfoDB.position = {
+    addon.Settings.position = {
         point = point,
         relativePoint = relativePoint,
         x = x,
@@ -94,14 +109,15 @@ resizeGrip.highlight:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Hig
 resizeGrip:SetScript("OnMouseDown", function(self, button)
     if button == "LeftButton" then
         frame:StartSizing("BOTTOMRIGHT")
+        ResetAutoLock()  -- Reset timer when resizing starts
     end
 end)
 
 resizeGrip:SetScript("OnMouseUp", function(self, button)
     frame:StopMovingOrSizing()
     -- Save new size
-    GroupInfoDB.width = frame:GetWidth()
-    GroupInfoDB.height = frame:GetHeight()
+    addon.Settings.width = frame:GetWidth()
+    addon.Settings.height = frame:GetHeight()
 end)
 
 -- Show background and resize grip when dragging or unlocked
@@ -113,8 +129,17 @@ frame:HookScript("OnDragStop", function(self)
     self.bg:Hide()
 end)
 
--- Function to update resize grip visibility
-local function UpdateResizeGripVisibility()
+-- Reset auto-lock timer on mouse activity
+frame:SetScript("OnEnter", function(self)
+    ResetAutoLock()
+end)
+
+frame:SetScript("OnMouseDown", function(self)
+    ResetAutoLock()
+end)
+
+-- Function to update resize grip visibility (now properly implement it)
+UpdateResizeGripVisibility = function()
     if frame:IsMouseEnabled() then
         resizeGrip:Show()
         frame.bg:Show()
@@ -128,8 +153,8 @@ end
 local compositionText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 compositionText:SetPoint("TOP", frame, "TOP", 0, 0)
 compositionText:SetText("")
-if GroupInfoDB.textColor then
-    compositionText:SetTextColor(GroupInfoDB.textColor.r or 1, GroupInfoDB.textColor.g or 1, GroupInfoDB.textColor.b or 1)
+if addon.Settings.textColor then
+    compositionText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
 else
     compositionText:SetTextColor(1, 1, 1)
 end
@@ -137,8 +162,8 @@ end
 local raidGroupText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 raidGroupText:SetPoint("TOP", compositionText, "BOTTOM", 0, -5)
 raidGroupText:SetText("")
-if GroupInfoDB.textColor then
-    raidGroupText:SetTextColor(GroupInfoDB.textColor.r or 1, GroupInfoDB.textColor.g or 1, GroupInfoDB.textColor.b or 1)
+if addon.Settings.textColor then
+    raidGroupText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
 else
     raidGroupText:SetTextColor(1, 1, 1)
 end
@@ -152,7 +177,7 @@ local UNASSIGNED_ICON = "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:16:16:
 -- Function to get role counts
 local function GetGroupComposition()
     -- Test mode override
-    if GroupInfoDB.testMode then
+    if addon.Settings.testMode then
         return 2, 4, 14  -- 2 tanks, 4 healers, 14 dps
     end
     
@@ -222,7 +247,7 @@ end
 -- Function to get player's raid group
 local function GetPlayerRaidGroup()
     -- Test mode override
-    if GroupInfoDB.testMode then
+    if addon.Settings.testMode then
         return 3  -- Simulate being in group 3
     end
     
@@ -244,12 +269,12 @@ end
 
 -- Function to update text colors
 local function UpdateTextColors()
-    if not GroupInfoDB.textColor then
-        GroupInfoDB.textColor = { r = 1, g = 1, b = 1 }
+    if not addon.Settings.textColor then
+        addon.Settings.textColor = { r = 1, g = 1, b = 1 }
     end
-    local r = GroupInfoDB.textColor.r or 1
-    local g = GroupInfoDB.textColor.g or 1
-    local b = GroupInfoDB.textColor.b or 1
+    local r = addon.Settings.textColor.r or 1
+    local g = addon.Settings.textColor.g or 1
+    local b = addon.Settings.textColor.b or 1
     compositionText:SetTextColor(r, g, b)
     raidGroupText:SetTextColor(r, g, b)
 end
@@ -259,7 +284,7 @@ local function UpdateDisplay()
     local tanks, healers, dps, unassigned = GetGroupComposition()
     
     -- Update composition text
-    if GroupInfoDB.showComposition and (GetNumGroupMembers() > 0 or GroupInfoDB.testMode) then
+    if addon.Settings.showComposition and (GetNumGroupMembers() > 0 or addon.Settings.testMode) then
         local text = string.format("%d %s  %d %s  %d %s", 
             tanks, TANK_ICON,
             healers, HEALER_ICON,
@@ -278,7 +303,7 @@ local function UpdateDisplay()
     
     -- Update raid group text
     local raidGroup = GetPlayerRaidGroup()
-    if GroupInfoDB.showRaidGroup and raidGroup then
+    if addon.Settings.showRaidGroup and raidGroup then
         raidGroupText:SetText(string.format("Group %d", raidGroup))
         raidGroupText:Show()
     else
@@ -312,17 +337,21 @@ SlashCmdList["GROUPINFO"] = function(msg)
     elseif msg == "config" then
         Settings.OpenToCategory("GroupInfo")
     elseif msg == "lock" then
+        CancelAutoLock()  -- Cancel any pending auto-lock
         frame:EnableMouse(false)
+        addon.Settings.isLocked = true
         UpdateResizeGripVisibility()
         print("|cFF00FF00GroupInfo:|r Frame locked")
     elseif msg == "unlock" then
         frame:EnableMouse(true)
+        addon.Settings.isLocked = false
         UpdateResizeGripVisibility()
-        print("|cFF00FF00GroupInfo:|r Frame unlocked - drag to reposition or resize from corner")
+        StartAutoLock()  -- Start auto-lock timer
+        print("|cFF00FF00GroupInfo:|r Frame unlocked - will auto-lock after 30 seconds of inactivity")
     elseif msg == "test" then
-        GroupInfoDB.testMode = not GroupInfoDB.testMode
+        addon.Settings.testMode = not addon.Settings.testMode
         UpdateDisplay()
-        if GroupInfoDB.testMode then
+        if addon.Settings.testMode then
             print("|cFF00FF00GroupInfo:|r Test mode enabled (2 tanks, 4 healers, 14 dps, group 3)")
         else
             print("|cFF00FF00GroupInfo:|r Test mode disabled")
@@ -348,12 +377,15 @@ local function CreateSettingsPanel()
     lockButton:SetScript("OnClick", function(self)
         local isUnlocked = frame:IsMouseEnabled()
         frame:EnableMouse(not isUnlocked)
+        addon.Settings.isLocked = isUnlocked  -- Save the new state
         UpdateResizeGripVisibility()
         self:SetText(isUnlocked and "Unlock Frame" or "Lock Frame")
         if isUnlocked then
+            CancelAutoLock()  -- Cancel timer when manually locking
             print("|cFF00FF00GroupInfo:|r Frame locked")
         else
-            print("|cFF00FF00GroupInfo:|r Frame unlocked - drag to reposition or resize from corner")
+            StartAutoLock()  -- Start timer when unlocking
+            print("|cFF00FF00GroupInfo:|r Frame unlocked - will auto-lock after 30 seconds of inactivity")
         end
     end)
     
@@ -361,12 +393,12 @@ local function CreateSettingsPanel()
     local testButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     testButton:SetPoint("LEFT", lockButton, "RIGHT", 10, 0)
     testButton:SetSize(150, 25)
-    testButton:SetText(GroupInfoDB.testMode and "Disable Test Mode" or "Enable Test Mode")
+    testButton:SetText(addon.Settings.testMode and "Disable Test Mode" or "Enable Test Mode")
     testButton:SetScript("OnClick", function(self)
-        GroupInfoDB.testMode = not GroupInfoDB.testMode
-        self:SetText(GroupInfoDB.testMode and "Disable Test Mode" or "Enable Test Mode")
+        addon.Settings.testMode = not addon.Settings.testMode
+        self:SetText(addon.Settings.testMode and "Disable Test Mode" or "Enable Test Mode")
         UpdateDisplay()
-        if GroupInfoDB.testMode then
+        if addon.Settings.testMode then
             print("|cFF00FF00GroupInfo:|r Test mode enabled")
         else
             print("|cFF00FF00GroupInfo:|r Test mode disabled")
@@ -377,9 +409,9 @@ local function CreateSettingsPanel()
     local showCompCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     showCompCheckbox:SetPoint("TOPLEFT", lockButton, "BOTTOMLEFT", 0, -20)
     showCompCheckbox.Text:SetText("Show Group Composition")
-    showCompCheckbox:SetChecked(GroupInfoDB.showComposition)
+    showCompCheckbox:SetChecked(addon.Settings.showComposition)
     showCompCheckbox:SetScript("OnClick", function(self)
-        GroupInfoDB.showComposition = self:GetChecked()
+        addon.Settings.showComposition = self:GetChecked()
         UpdateDisplay()
     end)
     
@@ -387,9 +419,9 @@ local function CreateSettingsPanel()
     local showRaidCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     showRaidCheckbox:SetPoint("TOPLEFT", showCompCheckbox, "BOTTOMLEFT", 0, -5)
     showRaidCheckbox.Text:SetText("Show Raid Group Number")
-    showRaidCheckbox:SetChecked(GroupInfoDB.showRaidGroup)
+    showRaidCheckbox:SetChecked(addon.Settings.showRaidGroup)
     showRaidCheckbox:SetScript("OnClick", function(self)
-        GroupInfoDB.showRaidGroup = self:GetChecked()
+        addon.Settings.showRaidGroup = self:GetChecked()
         UpdateDisplay()
     end)
     
@@ -402,11 +434,11 @@ local function CreateSettingsPanel()
     -- Open color picker on click
     colorButton:SetScript("OnClick", function(self)
         -- Ensure textColor exists
-        if not GroupInfoDB.textColor then
-            GroupInfoDB.textColor = { r = 1, g = 1, b = 1 }
+        if not addon.Settings.textColor then
+            addon.Settings.textColor = { r = 1, g = 1, b = 1 }
         end
         
-        local r, g, b = GroupInfoDB.textColor.r or 1, GroupInfoDB.textColor.g or 1, GroupInfoDB.textColor.b or 1
+        local r, g, b = addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1
         
         local info = {
             r = r,
@@ -415,22 +447,22 @@ local function CreateSettingsPanel()
             hasOpacity = false,
             swatchFunc = function()
                 local newR, newG, newB = ColorPickerFrame:GetColorRGB()
-                if not GroupInfoDB.textColor then
-                    GroupInfoDB.textColor = {}
+                if not addon.Settings.textColor then
+                    addon.Settings.textColor = {}
                 end
-                GroupInfoDB.textColor.r = newR
-                GroupInfoDB.textColor.g = newG
-                GroupInfoDB.textColor.b = newB
+                addon.Settings.textColor.r = newR
+                addon.Settings.textColor.g = newG
+                addon.Settings.textColor.b = newB
                 UpdateTextColors()
             end,
             cancelFunc = function(previousValues)
                 if previousValues and previousValues.r then
-                    if not GroupInfoDB.textColor then
-                        GroupInfoDB.textColor = {}
+                    if not addon.Settings.textColor then
+                        addon.Settings.textColor = {}
                     end
-                    GroupInfoDB.textColor.r = previousValues.r
-                    GroupInfoDB.textColor.g = previousValues.g
-                    GroupInfoDB.textColor.b = previousValues.b
+                    addon.Settings.textColor.r = previousValues.r
+                    addon.Settings.textColor.g = previousValues.g
+                    addon.Settings.textColor.b = previousValues.b
                     UpdateTextColors()
                 end
             end,
@@ -446,12 +478,12 @@ local function CreateSettingsPanel()
         -- Override the default button to restore to white
         if ColorPickerFrame.Footer and ColorPickerFrame.Footer.DefaultButton then
             ColorPickerFrame.Footer.DefaultButton:SetScript("OnClick", function()
-                if not GroupInfoDB.textColor then
-                    GroupInfoDB.textColor = {}
+                if not addon.Settings.textColor then
+                    addon.Settings.textColor = {}
                 end
-                GroupInfoDB.textColor.r = 1
-                GroupInfoDB.textColor.g = 1
-                GroupInfoDB.textColor.b = 1
+                addon.Settings.textColor.r = 1
+                addon.Settings.textColor.g = 1
+                addon.Settings.textColor.b = 1
                 UpdateTextColors()
                 ColorPickerFrame:SetColorRGB(1, 1, 1)
             end)
@@ -463,7 +495,7 @@ local function CreateSettingsPanel()
     -- Info text
     local infoText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     infoText:SetPoint("TOPLEFT", colorButton, "BOTTOMLEFT", 0, -20)
-    infoText:SetText("Unlock the frame to drag it to a new position or resize from the corner.\nTest mode simulates a 20-player raid composition:\n2 Tanks, 4 Healers, 14 DPS in Raid Group 3")
+    infoText:SetText("Unlock the frame to drag it to a new position or resize from the corner.\nThe frame will automatically lock after 30 seconds of inactivity.\nTest mode simulates a 20-player raid composition:\n2 Tanks, 4 Healers, 14 DPS in Raid Group 3\n\n|cFFFFFF00Note:|r All settings are saved account-wide and shared across all characters.")
     infoText:SetJustifyH("LEFT")
     
     -- Register in new settings system
@@ -474,7 +506,19 @@ end
 -- Create settings panel on load
 CreateSettingsPanel()
 
--- Set initial resize grip visibility
+-- Set initial resize grip visibility based on saved lock state
 UpdateResizeGripVisibility()
+
+-- On initial load, if frame is unlocked, start the auto-lock timer
+-- But also ensure isLocked is properly set to true if it's the first time loading
+if addon.Settings.isLocked == false then
+    -- Frame is explicitly unlocked, start auto-lock timer
+    StartAutoLock()
+else
+    -- Ensure frame is locked (this handles nil case or true case)
+    frame:EnableMouse(false)
+    addon.Settings.isLocked = true
+    UpdateResizeGripVisibility()
+end
 
 print("|cFF00FF00GroupInfo|r loaded successfully! Type /gi for commands")

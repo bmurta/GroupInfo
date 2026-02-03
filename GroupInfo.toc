@@ -2,7 +2,8 @@
 ## Title: GroupInfo
 ## Notes: Displays group composition and raid group information
 ## Author: YourName
-## Version: 1.0.0
+## Version: 1.0.1
 ## SavedVariables: GroupInfoDB
 
+Settings.lua
 GroupInfo.lua
