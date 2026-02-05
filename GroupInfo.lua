@@ -149,21 +149,6 @@ UpdateResizeGripVisibility = function()
     end
 end
 
--- Function to update text positions based on spacing setting
-local function UpdateTextPositions()
-    local spacing = addon.Settings.textSpacing or 6
-    
-    -- Clear and reset player count text position
-    playerCountText:ClearAllPoints()
-    playerCountText:SetPoint("BOTTOMLEFT", compositionText, "TOPLEFT", 0, spacing)
-    playerCountText:SetPoint("BOTTOMRIGHT", compositionText, "TOPRIGHT", 0, spacing)
-    
-    -- Clear and reset raid group text position
-    raidGroupText:ClearAllPoints()
-    raidGroupText:SetPoint("TOPLEFT", compositionText, "BOTTOMLEFT", 0, -spacing)
-    raidGroupText:SetPoint("TOPRIGHT", compositionText, "BOTTOMRIGHT", 0, -spacing)
-end
-
 -- Create text displays
 -- Composition text (middle line - create first as anchor)
 local compositionText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -191,6 +176,21 @@ if addon.Settings.textColor then
     raidGroupText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
 else
     raidGroupText:SetTextColor(1, 1, 1)
+end
+
+-- Function to update text positions based on spacing setting
+local function UpdateTextPositions()
+    local spacing = addon.Settings.textSpacing or 6
+    
+    -- Clear and reset player count text position
+    playerCountText:ClearAllPoints()
+    playerCountText:SetPoint("BOTTOMLEFT", compositionText, "TOPLEFT", 0, spacing)
+    playerCountText:SetPoint("BOTTOMRIGHT", compositionText, "TOPRIGHT", 0, spacing)
+    
+    -- Clear and reset raid group text position
+    raidGroupText:ClearAllPoints()
+    raidGroupText:SetPoint("TOPLEFT", compositionText, "BOTTOMLEFT", 0, -spacing)
+    raidGroupText:SetPoint("TOPRIGHT", compositionText, "BOTTOMRIGHT", 0, -spacing)
 end
 
 -- Set initial positions
