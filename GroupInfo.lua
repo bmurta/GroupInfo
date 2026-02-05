@@ -149,9 +149,25 @@ UpdateResizeGripVisibility = function()
     end
 end
 
+-- Function to update text positions based on spacing setting
+local function UpdateTextPositions()
+    local spacing = addon.Settings.textSpacing or 6
+    
+    -- Clear and reset player count text position
+    playerCountText:ClearAllPoints()
+    playerCountText:SetPoint("BOTTOMLEFT", compositionText, "TOPLEFT", 0, spacing)
+    playerCountText:SetPoint("BOTTOMRIGHT", compositionText, "TOPRIGHT", 0, spacing)
+    
+    -- Clear and reset raid group text position
+    raidGroupText:ClearAllPoints()
+    raidGroupText:SetPoint("TOPLEFT", compositionText, "BOTTOMLEFT", 0, -spacing)
+    raidGroupText:SetPoint("TOPRIGHT", compositionText, "BOTTOMRIGHT", 0, -spacing)
+end
+
 -- Create text displays
+-- Composition text (middle line - create first as anchor)
 local compositionText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-compositionText:SetPoint("TOP", frame, "TOP", 0, 0)
+compositionText:SetPoint("CENTER", frame, "CENTER", 0, 0)
 compositionText:SetText("")
 if addon.Settings.textColor then
     compositionText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
@@ -159,14 +175,26 @@ else
     compositionText:SetTextColor(1, 1, 1)
 end
 
+-- Player count text (first line - anchored to composition)
+local playerCountText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+playerCountText:SetText("")
+if addon.Settings.textColor then
+    playerCountText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
+else
+    playerCountText:SetTextColor(1, 1, 1)
+end
+
+-- Raid group text (third line - anchored to composition)
 local raidGroupText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-raidGroupText:SetPoint("TOP", compositionText, "BOTTOM", 0, -5)
 raidGroupText:SetText("")
 if addon.Settings.textColor then
     raidGroupText:SetTextColor(addon.Settings.textColor.r or 1, addon.Settings.textColor.g or 1, addon.Settings.textColor.b or 1)
 else
     raidGroupText:SetTextColor(1, 1, 1)
 end
+
+-- Set initial positions
+UpdateTextPositions()
 
 -- Icon textures (using built-in WoW atlas textures)
 local TANK_ICON = "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:16:16:0:0:64:64:0:19:22:41|t"
@@ -267,6 +295,21 @@ local function GetPlayerRaidGroup()
     return nil
 end
 
+-- Function to get player count
+local function GetPlayerCount()
+    -- Test mode override
+    if addon.Settings.testMode then
+        return 20  -- Simulate 20-player raid
+    end
+    
+    local numGroupMembers = GetNumGroupMembers()
+    if numGroupMembers == 0 then
+        return 1  -- Solo player
+    end
+    
+    return numGroupMembers
+end
+
 -- Function to update text colors
 local function UpdateTextColors()
     if not addon.Settings.textColor then
@@ -275,13 +318,34 @@ local function UpdateTextColors()
     local r = addon.Settings.textColor.r or 1
     local g = addon.Settings.textColor.g or 1
     local b = addon.Settings.textColor.b or 1
+    playerCountText:SetTextColor(r, g, b)
     compositionText:SetTextColor(r, g, b)
     raidGroupText:SetTextColor(r, g, b)
+end
+
+-- Function to update text alignment
+local function UpdateTextAlignments()
+    -- Update player count alignment
+    local playerAlign = addon.Settings.playerCountAlign or "CENTER"
+    playerCountText:SetJustifyH(playerAlign)
+    
+    -- Update raid group alignment
+    local raidAlign = addon.Settings.raidGroupAlign or "CENTER"
+    raidGroupText:SetJustifyH(raidAlign)
 end
 
 -- Update display
 local function UpdateDisplay()
     local tanks, healers, dps, unassigned = GetGroupComposition()
+    
+    -- Update player count text
+    if addon.Settings.showPlayerCount then
+        local playerCount = GetPlayerCount()
+        playerCountText:SetText(string.format("%d", playerCount))
+        playerCountText:Show()
+    else
+        playerCountText:Hide()
+    end
     
     -- Update composition text
     if addon.Settings.showComposition and (GetNumGroupMembers() > 0 or addon.Settings.testMode) then
@@ -309,6 +373,9 @@ local function UpdateDisplay()
     else
         raidGroupText:Hide()
     end
+    
+    -- Update alignments
+    UpdateTextAlignments()
 end
 
 -- Event handler
@@ -352,7 +419,7 @@ SlashCmdList["GROUPINFO"] = function(msg)
         addon.Settings.testMode = not addon.Settings.testMode
         UpdateDisplay()
         if addon.Settings.testMode then
-            print("|cFF00FF00GroupInfo:|r Test mode enabled (2 tanks, 4 healers, 14 dps, group 3)")
+            print("|cFF00FF00GroupInfo:|r Test mode enabled (20 players: 2 tanks, 4 healers, 14 dps, group 3)")
         else
             print("|cFF00FF00GroupInfo:|r Test mode disabled")
         end
@@ -405,9 +472,19 @@ local function CreateSettingsPanel()
         end
     end)
     
+    -- Show Player Count Checkbox
+    local showPlayerCountCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+    showPlayerCountCheckbox:SetPoint("TOPLEFT", lockButton, "BOTTOMLEFT", 0, -20)
+    showPlayerCountCheckbox.Text:SetText("Show Player Count")
+    showPlayerCountCheckbox:SetChecked(addon.Settings.showPlayerCount)
+    showPlayerCountCheckbox:SetScript("OnClick", function(self)
+        addon.Settings.showPlayerCount = self:GetChecked()
+        UpdateDisplay()
+    end)
+    
     -- Show Composition Checkbox
     local showCompCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
-    showCompCheckbox:SetPoint("TOPLEFT", lockButton, "BOTTOMLEFT", 0, -20)
+    showCompCheckbox:SetPoint("TOPLEFT", showPlayerCountCheckbox, "BOTTOMLEFT", 0, -5)
     showCompCheckbox.Text:SetText("Show Group Composition")
     showCompCheckbox:SetChecked(addon.Settings.showComposition)
     showCompCheckbox:SetScript("OnClick", function(self)
@@ -425,9 +502,95 @@ local function CreateSettingsPanel()
         UpdateDisplay()
     end)
     
+    -- Player Count Alignment Label
+    local playerAlignLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    playerAlignLabel:SetPoint("TOPLEFT", showRaidCheckbox, "BOTTOMLEFT", 0, -20)
+    playerAlignLabel:SetText("Player Count Alignment:")
+    
+    -- Player Count Alignment Dropdown
+    local playerAlignDropdown = CreateFrame("Frame", "GroupInfoPlayerAlignDropdown", panel, "UIDropDownMenuTemplate")
+    playerAlignDropdown:SetPoint("LEFT", playerAlignLabel, "RIGHT", -10, -5)
+    
+    local function PlayerAlignDropdown_OnClick(self)
+        addon.Settings.playerCountAlign = self.value
+        UIDropDownMenu_SetSelectedValue(playerAlignDropdown, self.value)
+        UIDropDownMenu_SetText(playerAlignDropdown, self.value)
+        UpdateDisplay()
+    end
+    
+    local function PlayerAlignDropdown_Initialize(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        
+        info.text = "LEFT"
+        info.value = "LEFT"
+        info.func = PlayerAlignDropdown_OnClick
+        info.checked = (addon.Settings.playerCountAlign == "LEFT")
+        UIDropDownMenu_AddButton(info, level)
+        
+        info.text = "CENTER"
+        info.value = "CENTER"
+        info.func = PlayerAlignDropdown_OnClick
+        info.checked = (addon.Settings.playerCountAlign == "CENTER")
+        UIDropDownMenu_AddButton(info, level)
+        
+        info.text = "RIGHT"
+        info.value = "RIGHT"
+        info.func = PlayerAlignDropdown_OnClick
+        info.checked = (addon.Settings.playerCountAlign == "RIGHT")
+        UIDropDownMenu_AddButton(info, level)
+    end
+    
+    UIDropDownMenu_Initialize(playerAlignDropdown, PlayerAlignDropdown_Initialize)
+    UIDropDownMenu_SetWidth(playerAlignDropdown, 100)
+    UIDropDownMenu_SetSelectedValue(playerAlignDropdown, addon.Settings.playerCountAlign or "CENTER")
+    UIDropDownMenu_SetText(playerAlignDropdown, addon.Settings.playerCountAlign or "CENTER")
+    
+    -- Raid Group Alignment Label
+    local raidAlignLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    raidAlignLabel:SetPoint("TOPLEFT", playerAlignLabel, "BOTTOMLEFT", 0, -30)
+    raidAlignLabel:SetText("Raid Group Alignment:")
+    
+    -- Raid Group Alignment Dropdown
+    local raidAlignDropdown = CreateFrame("Frame", "GroupInfoRaidAlignDropdown", panel, "UIDropDownMenuTemplate")
+    raidAlignDropdown:SetPoint("LEFT", raidAlignLabel, "RIGHT", -10, -5)
+    
+    local function RaidAlignDropdown_OnClick(self)
+        addon.Settings.raidGroupAlign = self.value
+        UIDropDownMenu_SetSelectedValue(raidAlignDropdown, self.value)
+        UIDropDownMenu_SetText(raidAlignDropdown, self.value)
+        UpdateDisplay()
+    end
+    
+    local function RaidAlignDropdown_Initialize(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        
+        info.text = "LEFT"
+        info.value = "LEFT"
+        info.func = RaidAlignDropdown_OnClick
+        info.checked = (addon.Settings.raidGroupAlign == "LEFT")
+        UIDropDownMenu_AddButton(info, level)
+        
+        info.text = "CENTER"
+        info.value = "CENTER"
+        info.func = RaidAlignDropdown_OnClick
+        info.checked = (addon.Settings.raidGroupAlign == "CENTER")
+        UIDropDownMenu_AddButton(info, level)
+        
+        info.text = "RIGHT"
+        info.value = "RIGHT"
+        info.func = RaidAlignDropdown_OnClick
+        info.checked = (addon.Settings.raidGroupAlign == "RIGHT")
+        UIDropDownMenu_AddButton(info, level)
+    end
+    
+    UIDropDownMenu_Initialize(raidAlignDropdown, RaidAlignDropdown_Initialize)
+    UIDropDownMenu_SetWidth(raidAlignDropdown, 100)
+    UIDropDownMenu_SetSelectedValue(raidAlignDropdown, addon.Settings.raidGroupAlign or "CENTER")
+    UIDropDownMenu_SetText(raidAlignDropdown, addon.Settings.raidGroupAlign or "CENTER")
+    
     -- Text Color Button
     local colorButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    colorButton:SetPoint("TOPLEFT", showRaidCheckbox, "BOTTOMLEFT", 0, -20)
+    colorButton:SetPoint("TOPLEFT", raidAlignLabel, "BOTTOMLEFT", 0, -30)
     colorButton:SetSize(120, 25)
     colorButton:SetText("Text Color")
     
@@ -492,9 +655,35 @@ local function CreateSettingsPanel()
         ColorPickerFrame:SetupColorPickerAndShow(info)
     end)
     
+    -- Text Spacing Label
+    local spacingLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    spacingLabel:SetPoint("TOPLEFT", colorButton, "BOTTOMLEFT", 0, -20)
+    spacingLabel:SetText("Text Spacing:")
+    
+    -- Text Spacing Slider
+    local spacingSlider = CreateFrame("Slider", "GroupInfoSpacingSlider", panel, "OptionsSliderTemplate")
+    spacingSlider:SetPoint("LEFT", spacingLabel, "RIGHT", 10, 0)
+    spacingSlider:SetMinMaxValues(0, 30)
+    spacingSlider:SetValue(addon.Settings.textSpacing or 6)
+    spacingSlider:SetValueStep(1)
+    spacingSlider:SetObeyStepOnDrag(true)
+    spacingSlider:SetWidth(200)
+    
+    -- Slider labels
+    _G[spacingSlider:GetName().."Low"]:SetText("0")
+    _G[spacingSlider:GetName().."High"]:SetText("30")
+    _G[spacingSlider:GetName().."Text"]:SetText(addon.Settings.textSpacing or 6)
+    
+    spacingSlider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor(value + 0.5)  -- Round to nearest integer
+        addon.Settings.textSpacing = value
+        _G[self:GetName().."Text"]:SetText(value)
+        UpdateTextPositions()
+    end)
+    
     -- Info text
     local infoText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    infoText:SetPoint("TOPLEFT", colorButton, "BOTTOMLEFT", 0, -20)
+    infoText:SetPoint("TOPLEFT", spacingLabel, "BOTTOMLEFT", 0, -50)
     infoText:SetText("Unlock the frame to drag it to a new position or resize from the corner.\nThe frame will automatically lock after 30 seconds of inactivity.\nTest mode simulates a 20-player raid composition:\n2 Tanks, 4 Healers, 14 DPS in Raid Group 3\n\n|cFFFFFF00Note:|r All settings are saved account-wide and shared across all characters.")
     infoText:SetJustifyH("LEFT")
     
