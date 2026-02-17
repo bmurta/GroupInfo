@@ -138,16 +138,41 @@ end
 local LEM -- assigned in ADDON_LOADED
 
 local function UpdateDisplay()
+    local g = GroupInfoDB and GroupInfoDB.global or {}
+    
+    -- In Edit Mode, show a static preview that respects current settings
     if LEM and LEM:IsInEditMode() then
-        -- Static preview in Edit Mode so the frame is visible while positioning
-        playerCountText:SetText("20")  ; playerCountText:Show()
-        compositionText:SetText(string.format("2 %s  4 %s  14 %s", TANK_ICON, HEALER_ICON, DPS_ICON)) ; compositionText:Show()
-        raidGroupText:SetText("Group 3") ; raidGroupText:Show()
+        local playerCount = g.testMode and 20 or nil
+        local tanks, healers, dps = 2, 4, 14
+        
+        if g.showPlayerCount and playerCount then
+            playerCountText:SetText(tostring(playerCount))
+            playerCountText:Show()
+        else
+            playerCountText:Hide()
+        end
+        
+        if g.showComposition then
+            compositionText:SetText(string.format("%d %s  %d %s  %d %s", tanks, TANK_ICON, healers, HEALER_ICON, dps, DPS_ICON))
+            compositionText:Show()
+        else
+            compositionText:Hide()
+        end
+        
+        if g.showRaidGroup then
+            raidGroupText:SetText("Group 3")
+            raidGroupText:Show()
+        else
+            raidGroupText:Hide()
+        end
+        
+        playerCountText:SetJustifyH(g.playerCountAlign or "CENTER")
+        raidGroupText:SetJustifyH(g.raidGroupAlign or "CENTER")
         UpdateTextColors()
         return
     end
 
-    local g = GroupInfoDB and GroupInfoDB.global or {}
+    -- Normal mode: show real data
     local tanks, healers, dps, unassigned = GetGroupComposition()
     local playerCount = GetPlayerCount()
 
