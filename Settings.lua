@@ -1,69 +1,38 @@
--- Settings.lua: Handles initialization and management of saved variables
-local addonName, addon = ...
+-- Settings.lua
+local addonName, ns = ...
 
--- Initialize account-wide settings (shared across all characters)
-GroupInfoDB = GroupInfoDB or {}
-
-local defaults = {
-    showComposition = true,
-    showRaidGroup = true,
-    showPlayerCount = true,  -- Show player count by default
-    testMode = false,
-    position = nil,  -- Will be set to default on first use
-    width = 200,  -- Reduced from 250
-    height = 55,  -- Adjusted for compact layout
-    isLocked = true,  -- Frame starts locked by default
-    textColor = { r = 1, g = 1, b = 1 },  -- White by default
-    playerCountAlign = "CENTER",  -- CENTER, LEFT, or RIGHT
-    raidGroupAlign = "CENTER",  -- CENTER, LEFT, or RIGHT
-    textSpacing = 6  -- Spacing between text lines in pixels (0-30)
+-- Default per-layout position data
+ns.defaultLayoutData = {
+    point = "TOP",
+    x     = 0,
+    y     = -200,
 }
 
--- Apply defaults for any missing keys
-for key, value in pairs(defaults) do
-    if GroupInfoDB[key] == nil then
-        if type(value) == "table" then
-            -- Deep copy for tables
-            GroupInfoDB[key] = {}
-            for k, v in pairs(value) do
-                GroupInfoDB[key][k] = v
-            end
-        else
-            GroupInfoDB[key] = value
-        end
+-- Ensures GroupInfoDB[layoutName] exists with defaults applied
+function ns.EnsureLayout(layoutName)
+    GroupInfoDB             = GroupInfoDB             or {}
+    GroupInfoDB.layouts     = GroupInfoDB.layouts     or {}
+    GroupInfoDB.global      = GroupInfoDB.global      or {}
+
+    if not GroupInfoDB.layouts[layoutName] then
+        GroupInfoDB.layouts[layoutName] = CopyTable(ns.defaultLayoutData)
     end
-end
 
--- Ensure textColor has all required fields (for existing users upgrading)
-if not GroupInfoDB.textColor or type(GroupInfoDB.textColor) ~= "table" then
-    GroupInfoDB.textColor = { r = 1, g = 1, b = 1 }
-end
-if not GroupInfoDB.textColor.r then GroupInfoDB.textColor.r = 1 end
-if not GroupInfoDB.textColor.g then GroupInfoDB.textColor.g = 1 end
-if not GroupInfoDB.textColor.b then GroupInfoDB.textColor.b = 1 end
+    local g = GroupInfoDB.global
+    if g.showComposition  == nil then g.showComposition  = true  end
+    if g.showRaidGroup    == nil then g.showRaidGroup    = true  end
+    if g.showPlayerCount  == nil then g.showPlayerCount  = true  end
+    if g.testMode         == nil then g.testMode         = false end
+    if g.textSpacing      == nil then g.textSpacing      = 6     end
+    if g.scale            == nil then g.scale            = 1     end
+    if g.playerCountAlign == nil then g.playerCountAlign = "CENTER" end
+    if g.raidGroupAlign   == nil then g.raidGroupAlign   = "CENTER" end
+    if type(g.textColor) ~= "table" then
+        g.textColor = { r = 1, g = 1, b = 1 }
+    end
+    g.textColor.r = g.textColor.r or 1
+    g.textColor.g = g.textColor.g or 1
+    g.textColor.b = g.textColor.b or 1
 
--- Ensure isLocked exists (for existing users upgrading)
-if GroupInfoDB.isLocked == nil then
-    GroupInfoDB.isLocked = true
+    return GroupInfoDB.layouts[layoutName]
 end
-
--- Ensure showPlayerCount exists (for existing users upgrading)
-if GroupInfoDB.showPlayerCount == nil then
-    GroupInfoDB.showPlayerCount = true
-end
-
--- Ensure alignment options exist (for existing users upgrading)
-if GroupInfoDB.playerCountAlign == nil then
-    GroupInfoDB.playerCountAlign = "CENTER"
-end
-if GroupInfoDB.raidGroupAlign == nil then
-    GroupInfoDB.raidGroupAlign = "CENTER"
-end
-
--- Ensure textSpacing exists (for existing users upgrading)
-if GroupInfoDB.textSpacing == nil then
-    GroupInfoDB.textSpacing = 6
-end
-
--- Export for use in main addon
-addon.Settings = GroupInfoDB
